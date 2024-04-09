@@ -1,4 +1,5 @@
-use crate::msg::{GreetResp, InstantiateMsg, QueryMsg};
+use crate::error::ContractError;
+use crate::msg::{ExecuteMsg, GreetResp, InstantiateMsg, QueryMsg};
 use crate::state::ADMINS;
 use cosmwasm_std::{
     to_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult,
@@ -29,9 +30,13 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     }
 }
 
-#[allow(dead_code)]
-pub fn execute(_deps: DepsMut, _env: Env, _info: MessageInfo, _msg: Empty) -> StdResult<Response> {
-    unimplemented!()
+pub fn execute(deps: DepsMut, _env: Env, info: MessageInfo, msg: ExecuteMsg) -> Result<Response, ContractError> {
+    use ExecuteMsg::*;
+
+    match msg {
+        AddMembers { admins } => exec::add_members(deps, info, admins),
+        Leave => exec::leave(deps, info).map_err(Into::into)
+    }
 }
 
 mod query {
@@ -51,6 +56,43 @@ mod query {
         let admins = ADMINS.load(deps.storage)?;
         let resp = AdminListResp { admins };
         Ok(resp)
+    }
+}
+
+mod exec {
+    use super::*;
+
+    pub fn add_members(
+        deps: DepsMut,
+        info: MessageInfo,
+        admins: Vec<String>
+    ) -> Result<Response, ContractError> {
+        let mut curr_admins = ADMINS.load(deps.storage)?;
+        if !curr_admins.contains(&info.sender) {
+            return Err(ContractError::Unauthorized { sender: info.sender });
+        }
+
+        let admins: StdResult<Vec<_>> = admins
+            .into_iter()
+            .map(|addr| deps.api.addr_validate(&addr))
+            .collect();
+
+        curr_admins.append(&mut admins?);
+        ADMINS.save(deps.storage, &curr_admins)?;
+
+        Ok(Response::new())
+    }
+
+    pub fn leave(deps: DepsMut, info: MessageInfo) -> StdResult<Response> {
+        ADMINS.update(deps.storage, move |admins| -> StdResult<_> {
+            let admins = admins
+                .into_iter()
+                .filter(|admin| *admin != info.sender)
+                .collect();
+            Ok(admins)
+        })?;
+
+        Ok(Response::new())
     }
 }
 
