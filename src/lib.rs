@@ -5,9 +5,9 @@ use error::ContractError;
 use msg::InstantiateMsg;
 
 mod contract;
+mod error;
 mod msg;
 mod state;
-mod error;
 
 #[entry_point]
 pub fn instantiate(
@@ -25,6 +25,11 @@ pub fn query(deps: Deps, env: Env, msg: msg::QueryMsg) -> StdResult<Binary> {
 }
 
 #[entry_point]
-pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: msg::ExecuteMsg) -> Result<Response, ContractError> {
+pub fn execute(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: msg::ExecuteMsg,
+) -> Result<Response, ContractError> {
     contract::execute(deps, env, info, msg)
 }

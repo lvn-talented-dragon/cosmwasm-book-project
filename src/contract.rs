@@ -30,12 +30,17 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     }
 }
 
-pub fn execute(deps: DepsMut, _env: Env, info: MessageInfo, msg: ExecuteMsg) -> Result<Response, ContractError> {
+pub fn execute(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: ExecuteMsg,
+) -> Result<Response, ContractError> {
     use ExecuteMsg::*;
 
     match msg {
         AddMembers { admins } => exec::add_members(deps, info, admins),
-        Leave => exec::leave(deps, info).map_err(Into::into)
+        Leave => exec::leave(deps, info).map_err(Into::into),
     }
 }
 
@@ -65,11 +70,13 @@ mod exec {
     pub fn add_members(
         deps: DepsMut,
         info: MessageInfo,
-        admins: Vec<String>
+        admins: Vec<String>,
     ) -> Result<Response, ContractError> {
         let mut curr_admins = ADMINS.load(deps.storage)?;
         if !curr_admins.contains(&info.sender) {
-            return Err(ContractError::Unauthorized { sender: info.sender });
+            return Err(ContractError::Unauthorized {
+                sender: info.sender,
+            });
         }
 
         let admins: StdResult<Vec<_>> = admins
@@ -226,6 +233,43 @@ mod test {
             AdminListResp {
                 admins: vec![Addr::unchecked("admin1"), Addr::unchecked("admin2")]
             }
+        );
+    }
+
+    #[test]
+    fn unauthorized() {
+        let mut app = App::default();
+
+        let code = ContractWrapper::new(execute, instantiate, query);
+        let code_id = app.store_code(Box::new(code));
+
+        let addr = app
+            .instantiate_contract(
+                code_id,
+                Addr::unchecked("sender"),
+                &InstantiateMsg { admins: vec![] },
+                &[],
+                "Contract",
+                None,
+            )
+            .unwrap();
+
+        let err = app
+            .execute_contract(
+                Addr::unchecked("user"),
+                addr,
+                &ExecuteMsg::AddMembers {
+                    admins: vec!["user".to_owned()],
+                },
+                &[],
+            )
+            .unwrap_err();
+
+        assert_eq!(
+            ContractError::Unauthorized {
+                sender: Addr::unchecked("user")
+            },
+            err.downcast().unwrap()
         );
     }
 }
