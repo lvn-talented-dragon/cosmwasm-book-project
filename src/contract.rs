@@ -65,6 +65,8 @@ mod query {
 }
 
 mod exec {
+    use cosmwasm_std::Event;
+
     use super::*;
 
     pub fn add_members(
@@ -79,6 +81,14 @@ mod exec {
             });
         }
 
+        let events = admins
+            .iter()
+            .map(|admin| Event::new("admin_added").add_attribute("addr", admin));
+        let resp = Response::new()
+            .add_events(events)
+            .add_attribute("action", "add_members")
+            .add_attribute("added_count", admins.len().to_string());
+
         let admins: StdResult<Vec<_>> = admins
             .into_iter()
             .map(|addr| deps.api.addr_validate(&addr))
@@ -87,7 +97,7 @@ mod exec {
         curr_admins.append(&mut admins?);
         ADMINS.save(deps.storage, &curr_admins)?;
 
-        Ok(Response::new())
+        Ok(resp)
     }
 
     pub fn leave(deps: DepsMut, info: MessageInfo) -> StdResult<Response> {
@@ -271,5 +281,72 @@ mod test {
             },
             err.downcast().unwrap()
         );
+    }
+
+    #[test]
+    fn add_members() {
+        let mut app = App::default();
+
+        let code = ContractWrapper::new(execute, instantiate, query);
+        let code_id = app.store_code(Box::new(code));
+
+        let addr = app
+            .instantiate_contract(
+                code_id, 
+                Addr::unchecked("owner"), 
+                &InstantiateMsg {
+                    admins: vec!["owner".to_owned()]
+                },
+                &[], 
+                "Contract", 
+                None,
+            )
+            .unwrap();
+
+        let resp = app
+            .execute_contract(
+                Addr::unchecked("owner"), 
+                addr, 
+                &ExecuteMsg::AddMembers { admins: vec!["user".to_owned()] }, 
+                &[]
+            )
+            .unwrap();
+
+        let wasm = resp.events.iter().find(|ev| ev.ty == "wasm").unwrap();
+
+        assert_eq!(
+            wasm.attributes
+                .iter()
+                .find(|attr| attr.key == "action")
+                .unwrap()
+                .value,
+            "add_members"
+        );
+        assert_eq!(
+            wasm.attributes
+                .iter()
+                .find(|attr| attr.key == "added_count")
+                .unwrap()
+                .value,
+            "1"
+        );
+
+        let admin_added: Vec<_> = resp
+            .events
+            .iter()
+            .filter(|ev| ev.ty == "wasm-admin_added")
+            .collect();
+        assert_eq!(admin_added.len(), 1);
+
+        assert_eq!(
+            admin_added[0]
+                .attributes
+                .iter()
+                .find(|attr| attr.key == "addr")
+                .unwrap()
+                .value,
+            Addr::unchecked("user")
+        );
+
     }
 }
