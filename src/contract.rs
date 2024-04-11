@@ -1,6 +1,6 @@
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, GreetResp, InstantiateMsg, QueryMsg};
-use crate::state::ADMINS;
+use crate::state::{ADMINS, DONATION_DENOM};
 use cosmwasm_std::{
     to_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult,
 };
@@ -17,6 +17,7 @@ pub fn instantiate(
         .map(|addr| deps.api.addr_validate(&addr))
         .collect();
     ADMINS.save(deps.storage, &admins?)?;
+    DONATION_DENOM.save(deps.storage, &msg.donation_denom)?;
 
     Ok(Response::new())
 }
@@ -40,7 +41,8 @@ pub fn execute(
 
     match msg {
         AddMembers { admins } => exec::add_members(deps, info, admins),
-        Leave => exec::leave(deps, info).map_err(Into::into),
+        Leave {} => exec::leave(deps, info).map_err(Into::into),
+        Donate {} => Ok(Response::new()),
     }
 }
 
@@ -149,7 +151,10 @@ mod test {
             deps.as_mut(),
             env.clone(),
             mock_info("sender", &[]),
-            InstantiateMsg { admins: vec![] },
+            InstantiateMsg {
+                admins: vec![],
+                donation_denom: "eth".to_owned(),
+            },
         )
         .unwrap();
 
@@ -175,7 +180,10 @@ mod test {
             .instantiate_contract(
                 code_id,
                 Addr::unchecked("owner"),
-                &InstantiateMsg { admins: vec![] },
+                &InstantiateMsg {
+                    admins: vec![],
+                    donation_denom: "eth".to_owned(),
+                },
                 &[],
                 "Contract",
                 None,
@@ -206,7 +214,10 @@ mod test {
             .instantiate_contract(
                 code_id,
                 Addr::unchecked("owner"),
-                &InstantiateMsg { admins: vec![] },
+                &InstantiateMsg {
+                    admins: vec![],
+                    donation_denom: "eth".to_owned(),
+                },
                 &[],
                 "Contract 1",
                 None,
@@ -226,6 +237,7 @@ mod test {
                 Addr::unchecked("owner"),
                 &InstantiateMsg {
                     admins: vec!["admin1".to_owned(), "admin2".to_owned()],
+                    donation_denom: "eth".to_owned(),
                 },
                 &[],
                 "Contract 2",
@@ -257,7 +269,10 @@ mod test {
             .instantiate_contract(
                 code_id,
                 Addr::unchecked("sender"),
-                &InstantiateMsg { admins: vec![] },
+                &InstantiateMsg {
+                    admins: vec![],
+                    donation_denom: "eth".to_owned(),
+                },
                 &[],
                 "Contract",
                 None,
@@ -292,23 +307,26 @@ mod test {
 
         let addr = app
             .instantiate_contract(
-                code_id, 
-                Addr::unchecked("owner"), 
+                code_id,
+                Addr::unchecked("owner"),
                 &InstantiateMsg {
-                    admins: vec!["owner".to_owned()]
+                    admins: vec!["owner".to_owned()],
+                    donation_denom: "eth".to_owned(),
                 },
-                &[], 
-                "Contract", 
+                &[],
+                "Contract",
                 None,
             )
             .unwrap();
 
         let resp = app
             .execute_contract(
-                Addr::unchecked("owner"), 
-                addr, 
-                &ExecuteMsg::AddMembers { admins: vec!["user".to_owned()] }, 
-                &[]
+                Addr::unchecked("owner"),
+                addr,
+                &ExecuteMsg::AddMembers {
+                    admins: vec!["user".to_owned()],
+                },
+                &[],
             )
             .unwrap();
 
@@ -347,6 +365,5 @@ mod test {
                 .value,
             Addr::unchecked("user")
         );
-
     }
 }
