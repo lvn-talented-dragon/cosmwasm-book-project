@@ -42,7 +42,7 @@ pub fn execute(
     match msg {
         AddMembers { admins } => exec::add_members(deps, info, admins),
         Leave {} => exec::leave(deps, info).map_err(Into::into),
-        Donate {} => Ok(Response::new()),
+        Donate {} => exec::donate(deps, info),
     }
 }
 
@@ -67,7 +67,7 @@ mod query {
 }
 
 mod exec {
-    use cosmwasm_std::Event;
+    use cosmwasm_std::{coins, BankMsg, Event};
 
     use super::*;
 
@@ -113,16 +113,36 @@ mod exec {
 
         Ok(Response::new())
     }
+
+    pub fn donate(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+        let denom = DONATION_DENOM.load(deps.storage)?;
+        let admins = ADMINS.load(deps.storage)?;
+
+        let donation = cw_utils::must_pay(&info, &denom)?.u128();
+
+        let donation_per_admin = donation / (admins.len() as u128);
+
+        let messages = admins.into_iter().map(|admin| BankMsg::Send {
+            to_address: admin.to_string(),
+            amount: coins(donation_per_admin, &denom)
+        });
+
+        let resp = Response::new()
+            .add_messages(messages)
+            .add_attribute("action", "donate")
+            .add_attribute("amount", donation.to_string())
+            .add_attribute("per_admin", donation_per_admin.to_string());
+
+        Ok(resp)
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{any::Any, vec};
+    use std::vec;
 
     use cosmwasm_std::{
-        from_binary,
-        testing::{mock_dependencies, mock_env, mock_info},
-        Addr,
+        coins, from_binary, testing::{mock_dependencies, mock_env, mock_info}, Addr
     };
     use cw_multi_test::{App, ContractWrapper, Executor};
 
@@ -365,5 +385,77 @@ mod test {
                 .value,
             Addr::unchecked("user")
         );
+    }
+
+    #[test]
+    fn donate() {
+        let mut app = App::new(|router, _, storage| {
+            router
+                .bank
+                .init_balance(storage, &Addr::unchecked("user"), coins(5, "eth"))
+                .unwrap()
+        });
+
+        let code = ContractWrapper::new(execute, instantiate, query);
+        let code_id = app.store_code(Box::new(code));
+
+        let addr = app
+            .instantiate_contract(
+                code_id, 
+                Addr::unchecked("owner"),
+                &InstantiateMsg { 
+                    admins: vec!["admins1".to_owned(), "admins2".to_owned()],
+                    donation_denom: "eth".to_owned(),
+                },
+                &[],
+                "Contract",
+                None
+            )
+            .unwrap();
+
+        app.execute_contract(
+            Addr::unchecked("user"), 
+            addr.clone(),
+            &ExecuteMsg::Donate {},
+            &coins(5, "eth")
+        )
+        .unwrap();
+
+        assert_eq!(
+            app.wrap()
+                .query_balance(Addr::unchecked("user"), "eth")
+                .unwrap()
+                .amount
+                .u128(),
+            0
+        );
+
+        assert_eq!(
+            app.wrap()
+                .query_balance(Addr::unchecked("admins1"), "eth")
+                .unwrap()
+                .amount
+                .u128(),
+            2
+        );
+
+        assert_eq!(
+            app.wrap()
+                .query_balance(Addr::unchecked("admins2"), "eth")
+                .unwrap()
+                .amount
+                .u128(),
+            2
+        );
+
+        assert_eq!(
+            app.wrap()
+                .query_balance(&addr, "eth")
+                .unwrap()
+                .amount
+                .u128(),
+            1
+        );
+
     }
 }
