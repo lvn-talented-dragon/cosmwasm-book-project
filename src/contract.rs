@@ -456,6 +456,82 @@ mod test {
                 .u128(),
             1
         );
+    }
 
+    #[test]
+    fn greedy_admin() {
+        let mut app = App::new(|router, _, storage| {
+            router
+                .bank
+                .init_balance(storage, &Addr::unchecked("user"), coins(6, "eth"))
+                .unwrap()
+        });
+
+        let code = ContractWrapper::new(execute, instantiate, query);
+        let code_id = app.store_code(Box::new(code));
+
+        let addr = app
+            .instantiate_contract(
+                code_id, 
+                Addr::unchecked("owner"), 
+                &InstantiateMsg {
+                    admins: vec!["owner1".to_owned(), "owner2".to_owned()],
+                    donation_denom: "eth".to_owned()
+                }, 
+                &[], 
+                "Contract", 
+                None
+            )
+            .unwrap();
+
+        app.execute_contract(
+            Addr::unchecked("owner1"), 
+            addr.clone(), 
+            &ExecuteMsg::AddMembers { admins: vec!["owner1".to_owned()] },
+            &[]
+        ).unwrap();
+
+        app.execute_contract(
+            Addr::unchecked("user"), 
+            addr.clone(), 
+            &ExecuteMsg::Donate {}, 
+            &coins(4, "eth")
+        ).unwrap();
+
+        assert_eq!(
+            app.wrap()
+                .query_balance(&addr, "eth")
+                .unwrap()
+                .amount
+                .u128(),
+            0
+        );
+
+        assert_eq!(
+            app.wrap()
+                .query_balance(Addr::unchecked("owner1"), "eth")
+                .unwrap()
+                .amount
+                .u128(),
+            2
+        );
+
+        assert_eq!(
+            app.wrap()
+                .query_balance(Addr::unchecked("owner2"), "eth")
+                .unwrap()
+                .amount
+                .u128(),
+            2
+        );
+
+        assert_eq!(
+            app.wrap()
+                .query_balance(Addr::unchecked("user"), "eth")
+                .unwrap()
+                .amount
+                .u128(),
+            2
+        );
     }
 }
