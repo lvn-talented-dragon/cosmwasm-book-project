@@ -8,6 +8,8 @@ pub enum ContractError {
     StdError(#[from] StdError),
     #[error("{sender} is not contract admin")]
     Unauthorized { sender: Addr },
+    #[error("{addr} is not availabe to add")]
+    NotAllowed { addr: Addr },
     #[error("Payment error: {0}")]
     Payment(#[from] PaymentError),
 }

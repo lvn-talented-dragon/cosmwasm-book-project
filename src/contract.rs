@@ -67,7 +67,7 @@ mod query {
 }
 
 mod exec {
-    use cosmwasm_std::{coins, BankMsg, Event};
+    use cosmwasm_std::{coins, Addr, BankMsg, Event};
 
     use super::*;
 
@@ -83,6 +83,15 @@ mod exec {
             });
         }
 
+        let admins: StdResult<Vec<_>> = admins
+            .into_iter()
+            .map(|addr| deps.api.addr_validate(&addr))
+            .collect();
+        let mut admins: Vec<Addr> = admins
+            .unwrap()
+            .into_iter()
+            .filter(|admin| *admin != info.sender)
+            .collect();
         let events = admins
             .iter()
             .map(|admin| Event::new("admin_added").add_attribute("addr", admin));
@@ -91,12 +100,8 @@ mod exec {
             .add_attribute("action", "add_members")
             .add_attribute("added_count", admins.len().to_string());
 
-        let admins: StdResult<Vec<_>> = admins
-            .into_iter()
-            .map(|addr| deps.api.addr_validate(&addr))
-            .collect();
 
-        curr_admins.append(&mut admins?);
+        curr_admins.append(&mut admins);
         ADMINS.save(deps.storage, &curr_admins)?;
 
         Ok(resp)
